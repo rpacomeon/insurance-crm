@@ -1,0 +1,13 @@
+# Insurance CRM Dependencies
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+
+# Build
+pyinstaller==6.3.0
+
+# Clipboard
+pyperclip==1.8.2
+
+# Note: tkinter and sqlite3 are included in Python standard library

@@ -1,0 +1,15 @@
+{
+  "app_name": "Insurance CRM",
+  "version": "1.0.0",
+  "database": {
+    "path": "data/crm.db"
+  },
+  "window": {
+    "width": 1000,
+    "height": 700,
+    "title": "보험설계사 CRM - 고객 관리"
+  },
+  "backup": {
+    "default_filename_format": "crm_backup_%Y%m%d_%H%M%S.db"
+  }
+}
