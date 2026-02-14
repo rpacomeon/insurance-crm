@@ -5,6 +5,7 @@
 생일 인디케이터 + 유병자 인디케이터 + CSV 다운로드
 """
 
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
@@ -16,6 +17,45 @@ from gui.customer_form import CustomerForm
 from gui.theme import COLORS, FONTS, SPACING, SIZES, APP_INFO
 from utils.file_helpers import backup_database, restore_database
 from utils.export_helpers import export_to_csv
+
+
+def show_toast(parent, message, duration=1500):
+    """자동 사라지는 토스트 메시지
+
+    Args:
+        parent: 부모 윈도우
+        message: 표시할 메시지
+        duration: 표시 시간 (밀리초, 기본: 1500ms)
+    """
+    toast = tk.Toplevel(parent)
+    toast.overrideredirect(True)  # 테두리 제거
+    toast.attributes("-topmost", True)  # 최상위 표시
+
+    # 메시지 레이블
+    label = tk.Label(
+        toast,
+        text=message,
+        font=FONTS["body"],
+        bg=COLORS["success"],
+        fg=COLORS["text_on_primary"],
+        padx=20,
+        pady=10,
+    )
+    label.pack()
+
+    # 화면 중앙 하단에 배치
+    parent.update_idletasks()
+    w = toast.winfo_reqwidth()
+    h = toast.winfo_reqheight()
+    sw = parent.winfo_screenwidth()
+    sh = parent.winfo_screenheight()
+    x = (sw - w) // 2
+    y = sh - h - 100  # 하단에서 100px 위
+
+    toast.geometry(f"+{x}+{y}")
+
+    # duration 후 자동 닫힘
+    toast.after(duration, toast.destroy)
 
 
 class MainWindow:
@@ -33,8 +73,9 @@ class MainWindow:
         self.root.configure(bg=COLORS["bg_main"])
         self.root.minsize(1200, 700)
 
-        # 데이터베이스 초기화
-        self.db = DatabaseManager("data/crm.db")
+        # 데이터베이스 초기화 (환경변수 지원)
+        db_path = os.environ.get("CRM_DB_PATH", "data/crm.db")
+        self.db = DatabaseManager(db_path)
 
         # 선택된 고객 ID
         self.selected_customer_id = None
@@ -57,6 +98,9 @@ class MainWindow:
         # 윈도우 중앙 배치
         self._center_window()
 
+        # 앱 시작 시 납부 알림 체크 (UI 렌더링 후 실행)
+        self.root.after(500, self._check_payments_on_startup)
+
     def _center_window(self):
         """윈도우를 화면 중앙에 배치"""
         self.root.update_idletasks()
@@ -65,6 +109,33 @@ class MainWindow:
         x = (self.root.winfo_screenwidth() // 2) - (w // 2)
         y = (self.root.winfo_screenheight() // 2) - (h // 2)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _check_payments_on_startup(self):
+        """앱 시작 시 납부 상태 자동 갱신 + 알림"""
+        try:
+            # 1. 납부 상태 자동 갱신 (NEW!)
+            result = self.db.auto_update_payment_status()
+
+            # 2. 납부 임박/연체 조회
+            upcoming = self.db.get_upcoming_payments(days_ahead=7)
+            overdue = self.db.get_overdue_policies()
+
+            messages = []
+            if result["updated"] > 0:
+                messages.append(f"🔄 {result['updated']}건 연체 상태로 갱신됨")
+            if upcoming:
+                messages.append(f"📅 납부 임박 (7일 이내): {len(upcoming)}건")
+            if overdue:
+                messages.append(f"⚠️ 연체 계약: {len(overdue)}건")
+
+            if messages:
+                messagebox.showinfo(
+                    "납부 상태 알림",
+                    "\n".join(messages) + "\n\n필터 버튼으로 해당 고객을 확인하세요."
+                )
+        except Exception as e:
+            # 시작 시 알림 실패해도 앱 실행에 영향 없음
+            print(f"⚠️ 납부 상태 체크 실패: {e}")
 
     def _setup_styles(self):
         """ttk 스타일 설정"""
@@ -213,6 +284,55 @@ class MainWindow:
             pady=2,
         )
 
+        # 필터 버튼들
+        filter_frame = tk.Frame(search_frame, bg=COLORS["bg_white"])
+        filter_frame.pack(side=tk.LEFT, padx=SPACING["padding_medium"])
+
+        # [전체] 필터
+        btn_all = tk.Button(
+            filter_frame,
+            text="전체",
+            font=FONTS["button_small"],
+            bg=COLORS["btn_refresh"],
+            fg=COLORS["text_on_primary"],
+            command=lambda: self._apply_filter("all"),
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        btn_all.pack(side=tk.LEFT, padx=(0, 5))
+
+        # [📅 납부 임박] 필터
+        btn_upcoming = tk.Button(
+            filter_frame,
+            text="📅 납부 임박 (D-7)",
+            font=FONTS["button_small"],
+            bg=COLORS["warning"],
+            fg=COLORS["text_on_primary"],
+            command=lambda: self._apply_filter("upcoming_payment"),
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        btn_upcoming.pack(side=tk.LEFT, padx=(0, 5))
+
+        # [⚠️ 연체] 필터
+        btn_overdue = tk.Button(
+            filter_frame,
+            text="⚠️ 연체",
+            font=FONTS["button_small"],
+            bg=COLORS["error"],
+            fg=COLORS["text_on_primary"],
+            command=lambda: self._apply_filter("overdue"),
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        btn_overdue.pack(side=tk.LEFT)
+
         # 안내 텍스트
         tk.Label(
             search_frame,
@@ -313,7 +433,7 @@ class MainWindow:
         scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Treeview 테이블 (컬럼 변경)
-        columns = ("생일", "유병", "고객명", "전화번호", "주민번호", "운전", "입금")
+        columns = ("생일", "유병", "납부", "연체", "고객명", "전화번호", "주민번호", "운전", "입금")
         self.tree = ttk.Treeview(
             parent,
             columns=columns,
@@ -327,6 +447,8 @@ class MainWindow:
         # 컬럼 설정
         self.tree.heading("생일", text="🎂", anchor=tk.CENTER)
         self.tree.heading("유병", text="💊", anchor=tk.CENTER)
+        self.tree.heading("납부", text="💰", anchor=tk.CENTER)
+        self.tree.heading("연체", text="⚠️", anchor=tk.CENTER)
         self.tree.heading("고객명", text="고객명", anchor=tk.W)
         self.tree.heading("전화번호", text="전화번호", anchor=tk.CENTER)
         self.tree.heading("주민번호", text="주민번호", anchor=tk.CENTER)
@@ -335,6 +457,8 @@ class MainWindow:
 
         self.tree.column("생일", width=40, minwidth=40, anchor=tk.CENTER)
         self.tree.column("유병", width=40, minwidth=40, anchor=tk.CENTER)
+        self.tree.column("납부", width=40, minwidth=40, anchor=tk.CENTER)
+        self.tree.column("연체", width=40, minwidth=40, anchor=tk.CENTER)
         self.tree.column("고객명", width=100, minwidth=80, anchor=tk.W)
         self.tree.column("전화번호", width=130, minwidth=110, anchor=tk.CENTER)
         self.tree.column("주민번호", width=130, minwidth=110, anchor=tk.CENTER)
@@ -637,6 +761,21 @@ class MainWindow:
         birthday_count = 0
         medical_count = 0
 
+        # 납부 임박 및 연체 고객 조회 (성능 최적화)
+        upcoming_payments = self.db.get_upcoming_payments(days_ahead=7)
+        overdue_policies = self.db.get_overdue_policies()
+
+        # customer_id로 매핑 (빠른 조회)
+        upcoming_customer_ids = {p["customer"].id for p in upcoming_payments}
+        overdue_customer_ids = {p["customer"].id for p in overdue_policies}
+
+        # 오늘 납부 예정 고객 (당일만)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_payment_customer_ids = {
+            p["customer"].id for p in upcoming_payments
+            if p["policy"].next_payment_date == today_str
+        }
+
         # 생일자 우선 정렬 + 필터 적용
         def is_birthday_today(cust):
             """생일인지 확인"""
@@ -675,6 +814,10 @@ class MainWindow:
                 continue
             elif self.filter_mode == "medical" and not is_med:
                 continue
+            elif self.filter_mode == "upcoming_payment" and customer.id not in upcoming_customer_ids:
+                continue
+            elif self.filter_mode == "overdue" and customer.id not in overdue_customer_ids:
+                continue
 
             filtered_customers.append(customer)
 
@@ -699,6 +842,16 @@ class MainWindow:
             if is_patient(customer):
                 medical_icon = "✚"
 
+            # 납부 임박 인디케이터 (당일 납부 예정)
+            payment_icon = ""
+            if customer.id in today_payment_customer_ids:
+                payment_icon = "💰"
+
+            # 연체 인디케이터
+            overdue_icon = ""
+            if customer.id in overdue_customer_ids:
+                overdue_icon = "⚠️"
+
             # 운전 여부
             driving_map = {"none": "미운전", "personal": "자가용", "commercial": "영업용"}
             driving_text = driving_map.get(customer.driving_type, "-")
@@ -712,6 +865,8 @@ class MainWindow:
                 values=(
                     birthday_icon,
                     medical_icon,
+                    payment_icon,
+                    overdue_icon,
                     customer.name,
                     customer.phone,
                     resident_display,
@@ -800,7 +955,7 @@ class MainWindow:
             except Exception as e:
                 raise Exception(f"고객 추가 실패: {e}")
 
-        CustomerForm(self.root, on_save=save_customer)
+        CustomerForm(self.root, on_save=save_customer, database=self.db)
 
     def _on_edit_customer(self):
         """수정 버튼 핸들러"""
@@ -848,7 +1003,7 @@ class MainWindow:
             except Exception as e:
                 raise Exception(f"고객 수정 실패: {e}")
 
-        CustomerForm(self.root, customer=customer, on_save=save_customer)
+        CustomerForm(self.root, customer=customer, on_save=save_customer, database=self.db)
 
     def _on_delete_customer(self):
         """삭제 버튼 핸들러"""
@@ -862,7 +1017,7 @@ class MainWindow:
 
         item = self.tree.item(selected[0])
         values = item["values"]
-        customer_name = values[2]  # 고객명
+        customer_name = values[4]  # 고객명 (생일, 유병, 납부, 연체 다음)
 
         # tags에서 customer.id 추출
         tags = item["tags"]
@@ -1056,11 +1211,8 @@ class MainWindow:
             # 클립보드에 복사
             pyperclip.copy(kakao_format)
 
-            # 성공 메시지
-            messagebox.showinfo(
-                "복사 완료",
-                "고객 정보가 클립보드에 복사되었습니다.\n카카오톡에 붙여넣기(Ctrl+V) 하세요.",
-            )
+            # 성공 메시지 (토스트 알림)
+            show_toast(self.root, "✅ 클립보드에 복사되었습니다")
         except ImportError:
             messagebox.showerror(
                 "오류",

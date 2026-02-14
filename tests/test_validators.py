@@ -14,6 +14,11 @@ from utils.validators import (
     validate_birth_date,
     validate_name,
     validate_resident_id,
+    validate_premium,
+    validate_billing_day,
+    validate_contract_dates,
+    validate_card_last4,
+    validate_card_expiry,
 )
 
 
@@ -132,3 +137,100 @@ def test_error_messages():
     assert success == False
     assert error is not None
     assert "형식" in error
+
+
+# =============================================================================
+# 보험료 검증 테스트
+# =============================================================================
+
+def test_validate_premium_valid():
+    """올바른 보험료"""
+    assert validate_premium("50000")[0] == True
+    assert validate_premium("1")[0] == True
+    assert validate_premium("100000000")[0] == True  # 1억
+    assert validate_premium("50,000")[0] == True  # 쉼표 포함
+
+
+def test_validate_premium_invalid():
+    """잘못된 보험료"""
+    assert validate_premium("")[0] == False  # 빈 값
+    assert validate_premium("abc")[0] == False  # 문자
+    assert validate_premium("0")[0] == False  # 0
+    assert validate_premium("-1000")[0] == False  # 음수
+    assert validate_premium("100000001")[0] == False  # 1억 초과
+
+
+# =============================================================================
+# 납부일 검증 테스트
+# =============================================================================
+
+def test_validate_billing_day_valid():
+    """올바른 납부일"""
+    assert validate_billing_day("1")[0] == True
+    assert validate_billing_day("15")[0] == True
+    assert validate_billing_day("31")[0] == True
+
+
+def test_validate_billing_day_invalid():
+    """잘못된 납부일"""
+    assert validate_billing_day("")[0] == False  # 빈 값
+    assert validate_billing_day("0")[0] == False  # 0
+    assert validate_billing_day("32")[0] == False  # 32
+    assert validate_billing_day("abc")[0] == False  # 문자
+
+
+# =============================================================================
+# 계약 날짜 검증 테스트
+# =============================================================================
+
+def test_validate_contract_dates_valid():
+    """올바른 계약 날짜"""
+    assert validate_contract_dates("2026-01-01", None)[0] == True  # 종료일 없음
+    assert validate_contract_dates("2026-01-01", "")[0] == True  # 종료일 빈 값
+    assert validate_contract_dates("2026-01-01", "2027-01-01")[0] == True  # 정상
+    assert validate_contract_dates("2026-06-15", "2026-06-15")[0] == True  # 같은 날
+
+
+def test_validate_contract_dates_invalid():
+    """잘못된 계약 날짜"""
+    assert validate_contract_dates("", None)[0] == False  # 시작일 없음
+    assert validate_contract_dates("invalid", None)[0] == False  # 형식 오류
+    assert validate_contract_dates("2026-01-01", "2025-01-01")[0] == False  # 종료 < 시작
+    assert validate_contract_dates("2026-01-01", "invalid")[0] == False  # 종료일 형식 오류
+
+
+# =============================================================================
+# 카드 마지막 4자리 검증 테스트
+# =============================================================================
+
+def test_validate_card_last4_valid():
+    """올바른 카드 4자리"""
+    assert validate_card_last4("1234")[0] == True
+    assert validate_card_last4("0000")[0] == True
+    assert validate_card_last4("")[0] == True  # 선택 필드 빈 값 허용
+
+
+def test_validate_card_last4_invalid():
+    """잘못된 카드 4자리"""
+    assert validate_card_last4("123")[0] == False  # 3자리
+    assert validate_card_last4("12345")[0] == False  # 5자리
+    assert validate_card_last4("abcd")[0] == False  # 문자
+
+
+# =============================================================================
+# 카드 유효기간 검증 테스트
+# =============================================================================
+
+def test_validate_card_expiry_valid():
+    """올바른 유효기간"""
+    assert validate_card_expiry("12/26")[0] == True
+    assert validate_card_expiry("01/30")[0] == True
+    assert validate_card_expiry("")[0] == True  # 선택 필드 빈 값 허용
+
+
+def test_validate_card_expiry_invalid():
+    """잘못된 유효기간"""
+    assert validate_card_expiry("13/26")[0] == False  # 13월
+    assert validate_card_expiry("00/26")[0] == False  # 0월
+    assert validate_card_expiry("1226")[0] == False  # 슬래시 없음
+    assert validate_card_expiry("12/2026")[0] == False  # 연도 4자리

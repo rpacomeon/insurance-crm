@@ -6,9 +6,9 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
-from models import Customer
+from models import Customer, Policy
 from gui.theme import COLORS, FONTS, SPACING, SIZES
 from utils.validators import (
     validate_name,
@@ -27,6 +27,7 @@ class CustomerForm:
         parent: tk.Tk,
         customer: Optional[Customer] = None,
         on_save: Optional[Callable] = None,
+        database=None,
     ):
         """폼 초기화
 
@@ -34,10 +35,12 @@ class CustomerForm:
             parent: 부모 윈도우
             customer: 수정할 고객 (None이면 추가 모드)
             on_save: 저장 후 호출될 콜백 함수
+            database: DatabaseManager 인스턴스 (계약 관리용)
         """
         self.parent = parent
         self.customer = customer
         self.on_save = on_save
+        self.database = database
         self.is_edit_mode = customer is not None
 
         # 모달 윈도우 생성 (크기 확대)
@@ -227,6 +230,11 @@ class CustomerForm:
         self._create_hospitalized_field(inner)
         self._create_recent_exam_field(inner)
         self._create_5yr_diagnosis_field(inner)
+
+        # ===== 계약 정보 섹션 (수정 모드일 때만 표시) =====
+        if self.is_edit_mode and self.database:
+            self._create_section_header(inner, "계약 정보")
+            self._create_policy_section(inner)
 
         # ===== 고지/메모 섹션 =====
         self._create_section_header(inner, "고지/메모")
@@ -1046,3 +1054,279 @@ class CustomerForm:
     def _on_cancel(self):
         """취소 버튼 클릭 핸들러"""
         self.window.destroy()
+
+    # =============================================================================
+    # 계약 정보 섹션 메서드
+    # =============================================================================
+
+    def _create_policy_section(self, parent: tk.Frame):
+        """계약 정보 섹션 생성 (Treeview + 버튼)"""
+        policy_frame = tk.Frame(parent, bg=COLORS["bg_white"])
+        policy_frame.pack(fill=tk.X, pady=(8, 0))
+
+        # Treeview 생성 (컬럼: 보험사, 상품명, 보험료, 납부일, 상태)
+        columns = ("insurer", "product", "premium", "billing_day", "status")
+        self.policy_tree = ttk.Treeview(
+            policy_frame,
+            columns=columns,
+            show="headings",
+            height=5,
+            selectmode="browse",
+        )
+
+        # 컬럼 헤더 설정
+        self.policy_tree.heading("insurer", text="보험사")
+        self.policy_tree.heading("product", text="상품명")
+        self.policy_tree.heading("premium", text="보험료")
+        self.policy_tree.heading("billing_day", text="납부일")
+        self.policy_tree.heading("status", text="상태")
+
+        # 컬럼 너비 설정
+        self.policy_tree.column("insurer", width=100, anchor="center")
+        self.policy_tree.column("product", width=150, anchor="w")
+        self.policy_tree.column("premium", width=80, anchor="e")
+        self.policy_tree.column("billing_day", width=60, anchor="center")
+        self.policy_tree.column("status", width=60, anchor="center")
+
+        # 스크롤바
+        scrollbar = ttk.Scrollbar(policy_frame, orient="vertical", command=self.policy_tree.yview)
+        self.policy_tree.configure(yscrollcommand=scrollbar.set)
+
+        # 레이아웃
+        self.policy_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 더블클릭 이벤트
+        self.policy_tree.bind("<Double-1>", self._on_policy_double_click)
+
+        # 버튼 프레임
+        button_frame = tk.Frame(parent, bg=COLORS["bg_white"])
+        button_frame.pack(fill=tk.X, pady=(5, 0))
+
+        # [+ 새 계약 추가] 버튼
+        add_btn = tk.Button(
+            button_frame,
+            text="+ 새 계약 추가",
+            font=FONTS["button_small"],
+            bg=COLORS["btn_add"],
+            fg=COLORS["text_on_primary"],
+            command=self._on_add_policy,
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        add_btn.pack(side="left", padx=(0, 5))
+
+        # [편집] 버튼
+        edit_btn = tk.Button(
+            button_frame,
+            text="편집",
+            font=FONTS["button_small"],
+            bg=COLORS["btn_edit"],
+            fg=COLORS["text_on_primary"],
+            command=self._on_edit_policy,
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        edit_btn.pack(side="left", padx=(0, 5))
+
+        # [삭제] 버튼
+        delete_btn = tk.Button(
+            button_frame,
+            text="삭제",
+            font=FONTS["button_small"],
+            bg=COLORS["btn_delete"],
+            fg=COLORS["text_on_primary"],
+            command=self._on_delete_policy,
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        delete_btn.pack(side="left", padx=(0, 5))
+
+        # [납부 완료] 버튼
+        payment_btn = tk.Button(
+            button_frame,
+            text="납부 완료",
+            font=FONTS["button_small"],
+            bg=COLORS["success"],
+            fg=COLORS["text_on_primary"],
+            command=self._on_mark_payment,
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        payment_btn.pack(side="left")
+
+        # 계약 목록 로드
+        self._load_policies()
+
+    def _load_policies(self):
+        """고객의 계약 목록을 Treeview에 로드"""
+        if not self.database or not self.customer or not self.customer.id:
+            return
+
+        # 기존 항목 삭제
+        for item in self.policy_tree.get_children():
+            self.policy_tree.delete(item)
+
+        # 계약 목록 조회
+        policies = self.database.get_policies_by_customer(self.customer.id)
+
+        # Treeview에 추가
+        for policy in policies:
+            # 상태 한글 변환
+            status_map = {"active": "활성", "overdue": "연체", "terminated": "해지"}
+            status_text = status_map.get(policy.status, policy.status)
+
+            # 보험료 천 단위 쉼표
+            premium_text = f"{policy.premium:,}원"
+
+            # 납부일
+            billing_day_text = f"{policy.billing_day}일"
+
+            self.policy_tree.insert(
+                "",
+                "end",
+                values=(
+                    policy.insurer,
+                    policy.product_name,
+                    premium_text,
+                    billing_day_text,
+                    status_text,
+                ),
+                tags=(str(policy.id),),
+            )
+
+    def _on_add_policy(self):
+        """새 계약 추가 버튼 핸들러"""
+        if not self.database or not self.customer or not self.customer.id:
+            messagebox.showerror("오류", "고객 정보를 먼저 저장해주세요")
+            return
+
+        # PolicyForm import (lazy import to avoid circular dependency)
+        from gui.policy_form import PolicyForm
+
+        def on_policy_save(policy: Policy):
+            """PolicyForm 저장 콜백"""
+            # DB에 저장
+            self.database.add_policy(policy)
+            # 목록 새로고침
+            self._load_policies()
+            messagebox.showinfo("성공", "계약이 추가되었습니다")
+
+        # PolicyForm 모달 열기
+        PolicyForm(self.window, self.customer.id, on_save=on_policy_save)
+
+    def _on_edit_policy(self):
+        """계약 편집 버튼 핸들러"""
+        selected = self.policy_tree.selection()
+        if not selected:
+            messagebox.showwarning("선택 오류", "편집할 계약을 선택해주세요")
+            return
+
+        # 선택된 계약 ID 가져오기
+        item = selected[0]
+        tags = self.policy_tree.item(item, "tags")
+        if not tags:
+            return
+        policy_id = int(tags[0])
+
+        # DB에서 계약 조회
+        policy = self.database.get_policy(policy_id)
+        if not policy:
+            messagebox.showerror("오류", "계약 정보를 찾을 수 없습니다")
+            return
+
+        # PolicyForm import (lazy import)
+        from gui.policy_form import PolicyForm
+
+        def on_policy_update(updated_policy: Policy):
+            """PolicyForm 저장 콜백"""
+            # DB 업데이트
+            self.database.update_policy(updated_policy)
+            # 목록 새로고침
+            self._load_policies()
+            messagebox.showinfo("성공", "계약이 수정되었습니다")
+
+        # PolicyForm 모달 열기 (수정 모드)
+        PolicyForm(self.window, self.customer.id, policy=policy, on_save=on_policy_update)
+
+    def _on_delete_policy(self):
+        """계약 삭제 버튼 핸들러"""
+        selected = self.policy_tree.selection()
+        if not selected:
+            messagebox.showwarning("선택 오류", "삭제할 계약을 선택해주세요")
+            return
+
+        # 선택된 계약 ID 가져오기
+        item = selected[0]
+        tags = self.policy_tree.item(item, "tags")
+        if not tags:
+            return
+        policy_id = int(tags[0])
+
+        # 확인 메시지
+        values = self.policy_tree.item(item, "values")
+        insurer = values[0]
+        product = values[1]
+
+        response = messagebox.askyesno(
+            "삭제 확인",
+            f"다음 계약을 삭제하시겠습니까?\n\n보험사: {insurer}\n상품명: {product}"
+        )
+
+        if response:
+            # DB에서 삭제
+            if self.database.delete_policy(policy_id):
+                # 목록 새로고침
+                self._load_policies()
+                messagebox.showinfo("성공", "계약이 삭제되었습니다")
+            else:
+                messagebox.showerror("오류", "계약 삭제에 실패했습니다")
+
+    def _on_mark_payment(self):
+        """납부 완료 처리 버튼 핸들러"""
+        selected = self.policy_tree.selection()
+        if not selected:
+            messagebox.showwarning("선택 오류", "납부 완료할 계약을 선택해주세요")
+            return
+
+        # 선택된 계약 ID 가져오기
+        item = selected[0]
+        tags = self.policy_tree.item(item, "tags")
+        if not tags:
+            return
+        policy_id = int(tags[0])
+
+        # 확인 메시지
+        values = self.policy_tree.item(item, "values")
+        insurer = values[0]
+        product = values[1]
+
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        response = messagebox.askyesno(
+            "납부 완료 확인",
+            f"다음 계약의 납부를 완료 처리하시겠습니까?\n\n"
+            f"보험사: {insurer}\n상품명: {product}\n납부일: {today}\n\n"
+            f"다음 납부일이 자동으로 갱신됩니다."
+        )
+
+        if response:
+            if self.database.mark_payment_completed(policy_id, today):
+                self._load_policies()
+                messagebox.showinfo("성공", "납부 완료 처리되었습니다.\n다음 납부일이 갱신되었습니다.")
+            else:
+                messagebox.showerror("오류", "납부 완료 처리에 실패했습니다")
+
+    def _on_policy_double_click(self, event):
+        """Treeview 더블클릭 이벤트 핸들러"""
+        # 편집 함수 호출
+        self._on_edit_policy()

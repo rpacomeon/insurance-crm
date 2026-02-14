@@ -123,3 +123,115 @@ class Customer:
             현재 시간 (YYYY-MM-DD HH:MM:SS 형식)
         """
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+@dataclass
+class Policy:
+    """보험 계약 데이터 모델"""
+
+    # 계약 기본 정보
+    customer_id: int
+    insurer: str  # 보험사 (예: 삼성생명)
+    product_name: str  # 보험 상품명
+    premium: int  # 보험료 (월 기준)
+
+    # 결제 정보
+    payment_method: str  # "card" / "transfer"
+    billing_cycle: str  # "monthly" / "yearly"
+    billing_day: int  # 납부일 (1~31)
+
+    # 카드 정보 (Phase 6-2: 전체 16자리)
+    card_issuer: Optional[str] = None  # 카드사 (예: 신한, 국민)
+    card_number: Optional[str] = None  # 카드 번호 16자리 (예: 1234-5678-9012-3456)
+    card_expiry: Optional[str] = None  # 유효기간 (MM/YY)
+
+    # 계약 기간
+    contract_start_date: str = ""  # YYYY-MM-DD
+    contract_end_date: Optional[str] = None  # YYYY-MM-DD (선택)
+
+    # 상태 관리
+    status: str = "active"  # "active" / "overdue" / "terminated"
+    next_payment_date: str = ""  # 다음 납부일 (자동 계산)
+    last_payment_date: Optional[str] = None  # 마지막 납부일
+
+    # 메모
+    memo: Optional[str] = None
+
+    # 시스템 필드
+    id: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Policy 객체를 딕셔너리로 변환
+
+        Returns:
+            계약 정보 딕셔너리
+        """
+        return {
+            'id': self.id,
+            'customer_id': self.customer_id,
+            'insurer': self.insurer,
+            'product_name': self.product_name,
+            'premium': self.premium,
+            'payment_method': self.payment_method,
+            'billing_cycle': self.billing_cycle,
+            'billing_day': self.billing_day,
+            'card_issuer': self.card_issuer,
+            'card_number': self.card_number,
+            'card_expiry': self.card_expiry,
+            'contract_start_date': self.contract_start_date,
+            'contract_end_date': self.contract_end_date,
+            'status': self.status,
+            'next_payment_date': self.next_payment_date,
+            'last_payment_date': self.last_payment_date,
+            'memo': self.memo,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at,
+        }
+
+    @staticmethod
+    def from_db_row(row: tuple) -> "Policy":
+        """데이터베이스 row를 Policy 객체로 변환
+
+        Args:
+            row: DB에서 조회한 튜플 (id, customer_id, insurer, product_name, premium,
+                 payment_method, billing_cycle, billing_day,
+                 card_issuer, card_number, card_expiry,
+                 contract_start_date, contract_end_date,
+                 status, next_payment_date, last_payment_date,
+                 memo, created_at, updated_at)
+
+        Returns:
+            Policy 객체
+        """
+        return Policy(
+            id=row[0],
+            customer_id=row[1],
+            insurer=row[2],
+            product_name=row[3],
+            premium=row[4],
+            payment_method=row[5],
+            billing_cycle=row[6],
+            billing_day=row[7],
+            card_issuer=row[8],
+            card_number=row[9],
+            card_expiry=row[10],
+            contract_start_date=row[11],
+            contract_end_date=row[12],
+            status=row[13],
+            next_payment_date=row[14],
+            last_payment_date=row[15],
+            memo=row[16],
+            created_at=row[17],
+            updated_at=row[18],
+        )
+
+    @staticmethod
+    def get_current_timestamp() -> str:
+        """현재 시간을 문자열로 반환
+
+        Returns:
+            현재 시간 (YYYY-MM-DD HH:MM:SS 형식)
+        """
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

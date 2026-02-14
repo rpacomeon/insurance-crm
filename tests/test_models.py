@@ -93,26 +93,30 @@ def test_customer_to_dict():
 
 def test_customer_from_db_row():
     """Customer from_db_row() 메서드 테스트 (확장 필드 포함)"""
-    # DB row 시뮬레이션 (18개 컬럼)
+    # DB row 시뮬레이션 (22개 컬럼 - 전체 스키마)
     row = (
-        1,  # id
-        "이영희",  # name
-        "010-1111-2222",  # phone
-        "750720-1234567",  # resident_id
-        None,  # birth_date
-        "부산시 해운대구",  # address
-        None,  # email
-        "단골 고객",  # memo
-        "personal",  # driving_type
-        None,  # commercial_detail
-        "자동이체",  # payment_method
-        "고혈압,당뇨병",  # med_medication
-        1,  # med_hospitalized (INTEGER)
-        "2024년 무릎 수술",  # med_hospital_detail
-        "암",  # med_5yr_diagnosis
-        "고혈압 당뇨 고지",  # notification_content
-        "2026-02-14 10:00:00",  # created_at
-        "2026-02-14 10:00:00"   # updated_at
+        1,                       # id
+        "이영희",                  # name
+        "010-1111-2222",          # phone
+        "750720-1234567",         # resident_id
+        None,                    # birth_date
+        "부산시 해운대구",           # address
+        None,                    # email
+        "단골 고객",               # memo
+        "자영업",                  # occupation
+        "personal",              # driving_type
+        None,                    # commercial_detail
+        "자동이체",                # payment_method
+        "고혈압,당뇨병",           # med_medication
+        1,                       # med_hospitalized (INTEGER)
+        "2024년 무릎 수술",        # med_hospital_detail
+        0,                       # med_recent_exam (INTEGER)
+        None,                    # med_recent_exam_detail
+        "암",                    # med_5yr_diagnosis
+        None,                    # med_5yr_custom
+        "고혈압 당뇨 고지",        # notification_content
+        "2026-02-14 10:00:00",   # created_at
+        "2026-02-14 10:00:00"    # updated_at
     )
 
     customer = Customer.from_db_row(row)
@@ -122,12 +126,15 @@ def test_customer_from_db_row():
     assert customer.phone == "010-1111-2222"
     assert customer.resident_id == "750720-1234567"
     assert customer.address == "부산시 해운대구"
+    assert customer.occupation == "자영업"
     assert customer.driving_type == "personal"
     assert customer.payment_method == "자동이체"
     assert customer.med_medication == "고혈압,당뇨병"
     assert customer.med_hospitalized is True  # INTEGER 1 → True 변환
     assert customer.med_hospital_detail == "2024년 무릎 수술"
+    assert customer.med_recent_exam is False  # INTEGER 0 → False
     assert customer.med_5yr_diagnosis == "암"
+    assert customer.med_5yr_custom is None
     assert customer.notification_content == "고혈압 당뇨 고지"
 
 

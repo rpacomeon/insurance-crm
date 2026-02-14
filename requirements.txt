@@ -10,4 +10,7 @@ pyinstaller==6.3.0
 # Clipboard
 pyperclip==1.8.2
 
+# Date utilities
+python-dateutil==2.8.2
+
 # Note: tkinter and sqlite3 are included in Python standard library
