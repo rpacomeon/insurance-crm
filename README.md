@@ -9,20 +9,39 @@
 - 💾 **데이터 백업/복원**: 간편한 백업 및 복원 기능
 - 🖥️ **단일 실행 파일**: 설치 불필요, exe 파일만 실행
 
-## 🚀 시작하기
+## 🚀 빠른 시작 (Quick Start)
 
-### 방법 1: exe 파일 실행 (권장)
-1. `InsuranceCRM.exe` 다운로드
-2. 더블클릭으로 실행
+### ⚡ 3단계로 바로 실행하기
 
-### 방법 2: 소스코드 실행 (개발자용)
 ```bash
-# 환경 설정
+# 1. 저장소 클론
+git clone https://github.com/rpacomeon/insurance-crm.git
+cd insurance-crm
+
+# 2. 환경 설정 (최초 1회만)
 scripts\setup_env.bat
 
-# 실행
+# 3. 프로그램 실행
 scripts\run_app.bat
 ```
+
+> **필수 요구사항**: Python 3.8 이상이 설치되어 있어야 합니다.
+> Python 설치: https://www.python.org/downloads/
+
+---
+
+### 📦 다른 설치 방법
+
+#### 방법 1: exe 파일 실행 (가장 쉬움)
+1. [Releases](https://github.com/rpacomeon/insurance-crm/releases)에서 `InsuranceCRM.exe` 다운로드
+2. 더블클릭으로 실행
+3. Python 설치 불필요!
+
+#### 방법 2: GitHub Desktop 사용
+1. [GitHub Desktop](https://desktop.github.com/) 설치
+2. `File` → `Clone Repository` → URL 입력: `https://github.com/rpacomeon/insurance-crm`
+3. 클론 완료 후 `scripts\setup_env.bat` 실행
+4. `scripts\run_app.bat`으로 프로그램 실행
 
 ## 📖 사용 방법
 
