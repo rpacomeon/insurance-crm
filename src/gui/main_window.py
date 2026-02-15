@@ -7,7 +7,7 @@
 
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 from pathlib import Path
 from datetime import datetime
 
@@ -17,6 +17,7 @@ from gui.customer_form import CustomerForm
 from gui.theme import COLORS, FONTS, SPACING, SIZES, APP_INFO
 from utils.file_helpers import backup_database, restore_database
 from utils.export_helpers import export_to_csv
+from utils.message_simulator import simulate_sms_send, send_sms, build_sms_template_message, build_review_text
 
 
 def show_toast(parent, message, duration=1500):
@@ -81,7 +82,7 @@ class MainWindow:
         self.selected_customer_id = None
 
         # 필터 상태
-        self.filter_mode = "all"  # "all" / "birthday" / "medical"
+        self.filter_mode = "all"  # "all" / "credit_card" / "today_card" / "overdue" / "upcoming_payment" / "birthday" / "medical"
 
         # 스타일 설정
         self._setup_styles()
@@ -369,6 +370,10 @@ class MainWindow:
         ).pack(side=tk.LEFT, padx=(SPACING["padding_medium"], 10))
 
         # 필터 버튼들
+        self._create_filter_button(filter_frame, "신용카드만 보기", "credit_card")
+        self._create_filter_button(filter_frame, "오늘[카드납부]", "today_card")
+        self._create_filter_button(filter_frame, "연체", "overdue")
+        self._create_filter_button(filter_frame, "이번주 준비", "upcoming_payment")
         self._create_filter_button(filter_frame, "생일자만 보기", "birthday")
         self._create_filter_button(filter_frame, "유병자만 보기", "medical")
         self._create_filter_button(filter_frame, "전체 보기", "all")
@@ -673,29 +678,40 @@ class MainWindow:
         left_group = tk.Frame(footer, bg=COLORS["bg_white"])
         left_group.pack(side=tk.LEFT, fill=tk.Y, pady=SPACING["padding_medium"])
 
-        self._create_button(left_group, "수정", COLORS["btn_edit"], self._on_edit_customer)
-        self._create_button(left_group, "삭제", COLORS["btn_delete"], self._on_delete_customer)
+        self._create_button(left_group, "Edit", COLORS["btn_edit"], self._on_edit_customer)
+        self._create_button(left_group, "Delete", COLORS["btn_delete"], self._on_delete_customer)
 
         # ✨ 추가: 카톡 복사 버튼 (수정/삭제 옆)
-        self.btn_copy_kakao = self._create_button(
+        self.btn_copy_customer = self._create_button(
             left_group,
-            "📋 카톡 복사",
+            "Copy Info",
             COLORS["primary"],
-            self._on_copy_kakao
+            self._on_copy_customer,
         )
-        self.btn_copy_kakao.config(state="disabled")  # 초기에는 비활성화
+        self.btn_copy_customer.config(state="disabled")
 
         # 구분선
         separator = tk.Frame(left_group, bg=COLORS["border"], width=2)
         separator.pack(side=tk.LEFT, fill=tk.Y, padx=12, pady=5)
 
-        self._create_button(left_group, "백업", COLORS["btn_backup"], self._on_backup)
-        self._create_button(left_group, "복원", COLORS["btn_restore"], self._on_restore)
-        self._create_button(left_group, "CSV 다운로드", COLORS["btn_refresh"], self._on_csv_download)
-        self._create_button(left_group, "새로고침", COLORS["btn_refresh"], self.load_customers)
+        self._create_button(left_group, "Backup", COLORS["btn_backup"], self._on_backup)
+        self._create_button(left_group, "Restore", COLORS["btn_restore"], self._on_restore)
+        self._create_button(left_group, "CSV Download", COLORS["btn_refresh"], self._on_csv_download)
+        self._create_button(left_group, "Refresh", COLORS["btn_refresh"], self.load_customers)
 
         # 우측: 종료 버튼
-        self._create_button(footer, "종료", COLORS["btn_exit"], self._on_exit, side=tk.RIGHT)
+        right_group = tk.Frame(footer, bg=COLORS["bg_white"])
+        right_group.pack(side=tk.RIGHT, fill=tk.Y, pady=SPACING["padding_medium"])
+
+        self.btn_sms_send = self._create_button(
+            right_group,
+            "Send SMS",
+            COLORS["info"],
+            self._on_send_sms,
+        )
+        self.btn_sms_send.config(state="disabled")
+
+        self._create_button(right_group, "Exit", COLORS["btn_exit"], self._on_exit, side=tk.RIGHT)
 
     def _create_button(
         self,
@@ -760,6 +776,7 @@ class MainWindow:
         # 생일자 및 유병자 카운트
         birthday_count = 0
         medical_count = 0
+        credit_card_count = 0
 
         # 납부 임박 및 연체 고객 조회 (성능 최적화)
         upcoming_payments = self.db.get_upcoming_payments(days_ahead=7)
@@ -768,6 +785,16 @@ class MainWindow:
         # customer_id로 매핑 (빠른 조회)
         upcoming_customer_ids = {p["customer"].id for p in upcoming_payments}
         overdue_customer_ids = {p["customer"].id for p in overdue_policies}
+        overdue_days_by_customer = {}
+        for item in overdue_policies:
+            customer_id = item["customer"].id
+            overdue_days = item.get("overdue_days", 0)
+            if customer_id not in overdue_days_by_customer:
+                overdue_days_by_customer[customer_id] = overdue_days
+            else:
+                overdue_days_by_customer[customer_id] = max(
+                    overdue_days_by_customer[customer_id], overdue_days
+                )
 
         # 오늘 납부 예정 고객 (당일만)
         today_str = datetime.now().strftime("%Y-%m-%d")
@@ -775,6 +802,7 @@ class MainWindow:
             p["customer"].id for p in upcoming_payments
             if p["policy"].next_payment_date == today_str
         }
+        upcoming_only_customer_ids = upcoming_customer_ids - today_payment_customer_ids
 
         # 생일자 우선 정렬 + 필터 적용
         def is_birthday_today(cust):
@@ -798,23 +826,34 @@ class MainWindow:
                 cust.med_5yr_custom,
             ])
 
+        def is_credit_card(cust):
+            payment_method = (cust.payment_method or "").strip()
+            return payment_method in {"신용카드", "card"}
+
         # 필터 적용
         filtered_customers = []
         for customer in customers:
             is_bday = is_birthday_today(customer)
             is_med = is_patient(customer)
+            is_card = is_credit_card(customer)
 
             if is_bday:
                 birthday_count += 1
             if is_med:
                 medical_count += 1
+            if is_card:
+                credit_card_count += 1
 
             # 필터 모드에 따라 선택
             if self.filter_mode == "birthday" and not is_bday:
                 continue
+            elif self.filter_mode == "credit_card" and not is_card:
+                continue
+            elif self.filter_mode == "today_card" and customer.id not in today_payment_customer_ids:
+                continue
             elif self.filter_mode == "medical" and not is_med:
                 continue
-            elif self.filter_mode == "upcoming_payment" and customer.id not in upcoming_customer_ids:
+            elif self.filter_mode == "upcoming_payment" and customer.id not in upcoming_only_customer_ids:
                 continue
             elif self.filter_mode == "overdue" and customer.id not in overdue_customer_ids:
                 continue
@@ -824,6 +863,9 @@ class MainWindow:
         # 생일자 우선 정렬
         def sort_key(cust):
             is_bday = is_birthday_today(cust)
+            if self.filter_mode == "overdue":
+                # 연체 필터에서는 연체일수 큰 고객을 먼저 배치
+                return (0, -overdue_days_by_customer.get(cust.id, 0), cust.name)
             return (0 if is_bday else 1, cust.name)
 
         filtered_customers.sort(key=sort_key)
@@ -883,7 +925,10 @@ class MainWindow:
 
         # 필터 상태 표시
         self.filter_status_label.config(
-            text=f"(전체 {total_count}명 | 생일자 {birthday_count}명 | 유병자 {medical_count}명)"
+            text=(
+                f"(전체 {total_count}명 | 생일자 {birthday_count}명 | "
+                f"신용카드 {credit_card_count}명 | 유병자 {medical_count}명)"
+            )
         )
 
     def _apply_filter(self, mode: str):
@@ -907,7 +952,9 @@ class MainWindow:
         if not selected:
             self._show_detail_placeholder()
             # ✨ 추가: 카톡 복사 버튼 비활성화
-            self.btn_copy_kakao.config(state="disabled")
+            self.btn_copy_customer.config(state="disabled")
+            if hasattr(self, "btn_sms_send"):
+                self.btn_sms_send.config(state="disabled")
             return
 
         # 선택된 행의 customer.id 찾기
@@ -926,7 +973,9 @@ class MainWindow:
         if customer_id is None:
             self._show_detail_placeholder()
             # ✨ 추가: 카톡 복사 버튼 비활성화
-            self.btn_copy_kakao.config(state="disabled")
+            self.btn_copy_customer.config(state="disabled")
+            if hasattr(self, "btn_sms_send"):
+                self.btn_sms_send.config(state="disabled")
             return
 
         # 고객 정보 조회 및 표시
@@ -935,23 +984,44 @@ class MainWindow:
             self.selected_customer_id = customer_id
             self._show_customer_detail(customer)
             # ✨ 추가: 카톡 복사 버튼 활성화
-            self.btn_copy_kakao.config(state="normal")
+            self.btn_copy_customer.config(state="normal")
+            if hasattr(self, "btn_sms_send"):
+                self.btn_sms_send.config(state="normal")
         else:
             self._show_detail_placeholder()
             # ✨ 추가: 카톡 복사 버튼 비활성화
-            self.btn_copy_kakao.config(state="disabled")
+            self.btn_copy_customer.config(state="disabled")
+            if hasattr(self, "btn_sms_send"):
+                self.btn_sms_send.config(state="disabled")
 
     def _on_add_customer(self):
         """새 고객 추가 버튼 핸들러"""
         def save_customer(customer: Customer):
             """고객 저장 콜백"""
             try:
-                self.db.add_customer(customer)
+                customer_id = self.db.add_customer(customer)
+                created_customer = self.db.get_customer(customer_id)
                 messagebox.showinfo(
                     "추가 완료",
-                    f"{customer.name}님이 추가되었습니다.",
+                    f"{customer.name}님이 추가되었습니다.\n저장된 고객 화면에서 보험 계약을 바로 추가할 수 있습니다.",
                 )
                 self.load_customers()
+
+                if created_customer:
+                    # Open edit mode right away so policy section is visible.
+                    def save_updated_customer(updated_customer: Customer):
+                        self.db.update_customer(updated_customer)
+                        self.load_customers()
+
+                    self.root.after(
+                        50,
+                        lambda: CustomerForm(
+                            self.root,
+                            customer=created_customer,
+                            on_save=save_updated_customer,
+                            database=self.db,
+                        ),
+                    )
             except Exception as e:
                 raise Exception(f"고객 추가 실패: {e}")
 
@@ -1045,17 +1115,65 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("오류", f"삭제 중 오류 발생:\n{e}")
 
-    def _on_copy_kakao(self):
-        """카톡 복사 버튼 핸들러"""
+    def _on_copy_customer(self):
+        """Copy selected customer text to clipboard."""
         if self.selected_customer_id is None:
-            messagebox.showwarning("선택 필요", "복사할 고객을 선택해주세요.")
+            messagebox.showwarning("Select Customer", "Please select a customer first.")
             return
 
         customer = self.db.get_customer(self.selected_customer_id)
         if customer:
-            self._copy_to_clipboard(customer)
+            self._copy_customer_to_clipboard(customer)
         else:
-            messagebox.showerror("오류", "고객 정보를 찾을 수 없습니다.")
+            messagebox.showerror("Error", "Customer not found.")
+
+    def _on_send_sms(self):
+        """Send SMS via NCP (or simulate by config)."""
+        if self.selected_customer_id is None:
+            messagebox.showwarning("Select Customer", "Please select a customer first.")
+            return
+
+        customer = self.db.get_customer(self.selected_customer_id)
+        if not customer:
+            messagebox.showerror("Error", "Customer not found.")
+            return
+
+        template = simpledialog.askstring(
+            "SMS Template",
+            "Template: birthday / overdue / upcoming / general",
+            initialvalue="general",
+            parent=self.root,
+        )
+        if template is None:
+            return
+
+        template_key = template.strip().lower()
+        if template_key not in {"birthday", "overdue", "upcoming", "general"}:
+            messagebox.showwarning("SMS", "Invalid template. Use birthday/overdue/upcoming/general.")
+            return
+
+        msg = build_sms_template_message(customer, template_key)
+        if not messagebox.askyesno(
+            "Send SMS",
+            f"To: {customer.phone}\nTemplate: {template_key}\n\nSend now?",
+            parent=self.root,
+        ):
+            return
+
+        result = send_sms(customer, message_override=msg)
+        if result.get("sent") == "true":
+            messagebox.showinfo("SMS", "SMS sent successfully.")
+        else:
+            note = result.get("note")
+            err = result.get("error")
+            status = result.get("status_code")
+            if note:
+                messagebox.showinfo("SMS", f"Not sent: {note}")
+            elif err:
+                detail = f"HTTP {status}\n{err}" if status else err
+                messagebox.showerror("SMS Error", detail)
+            else:
+                messagebox.showinfo("SMS", "SMS not sent.")
 
     def _on_backup(self):
         """백업 버튼 핸들러"""
@@ -1155,71 +1273,26 @@ class MainWindow:
         """테이블 더블클릭 이벤트 (수정 기능 호출)"""
         self._on_edit_customer()
 
-    def _copy_to_clipboard(self, customer: Customer):
-        """고객 정보를 카카오톡 형식으로 클립보드에 복사"""
+    def _copy_customer_to_clipboard(self, customer: Customer):
+        """Copy customer review text to clipboard (심사용 전체 정보 복사)."""
         try:
             import pyperclip
 
-            # 운전 정보
-            driving_map = {"none": "미운전", "personal": "자가용", "commercial": "영업용"}
-            driving_text = driving_map.get(customer.driving_type, "-")
-            if customer.driving_type == "commercial" and customer.commercial_detail:
-                details = customer.commercial_detail.split(",")
-                detail_map = {"taxi": "택시", "construction": "건설용"}
-                detail_text = ", ".join([detail_map.get(d.strip(), d.strip()) for d in details])
-                driving_text += f" ({detail_text})"
+            # 고객의 보험 계약 목록 조회
+            policies = self.db.get_policies_by_customer(customer.id)
 
-            # 최근 진찰
-            recent_exam_text = "아니오"
-            if customer.med_recent_exam:
-                recent_exam_text = "예"
-                if customer.med_recent_exam_detail:
-                    recent_exam_text += f" ({customer.med_recent_exam_detail})"
+            # 심사용 전체 정보 생성
+            text = build_review_text(customer, policies)
 
-            # 5년 진단
-            diagnosis_text = customer.med_5yr_diagnosis or "-"
-            if customer.med_5yr_custom:
-                if diagnosis_text == "-":
-                    diagnosis_text = customer.med_5yr_custom
-                else:
-                    diagnosis_text += f", {customer.med_5yr_custom}"
-
-            # 카톡 형식 생성
-            kakao_format = f"""━━━━━━━━━━━━━━━━━━━━
-👤 고객정보
-
-이름: {customer.name}
-전화: {customer.phone}
-주민: {customer.resident_id}
-주소: {customer.address or '-'}
-직업: {customer.occupation or '-'}
-
-💼 보험정보
-운전: {driving_text}
-입금: {customer.payment_method or '-'}
-
-💊 건강정보
-약복용: {customer.med_medication or '-'}
-최근진찰: {recent_exam_text}
-5년진단: {diagnosis_text}
-
-📝 메모
-고지: {customer.notification_content or '-'}
-메모: {customer.memo or '-'}
-━━━━━━━━━━━━━━━━━━━━"""
-
-            # 클립보드에 복사
-            pyperclip.copy(kakao_format)
-
-            # 성공 메시지 (토스트 알림)
-            show_toast(self.root, "✅ 클립보드에 복사되었습니다")
+            pyperclip.copy(text)
+            show_toast(self.root, "심사 정보 복사 완료")
         except ImportError:
             messagebox.showerror(
                 "오류",
-                "pyperclip 모듈이 설치되지 않았습니다.\n\n명령어: pip install pyperclip",
+                "pyperclip이 설치되지 않았습니다.\n\n설치 명령어: pip install pyperclip",
             )
         except Exception as e:
-            messagebox.showerror("오류", f"클립보드 복사 중 오류 발생:\n{e}")
+            messagebox.showerror("오류", f"클립보드 복사 실패:\n{e}")
 
     def _on_exit(self):
         """종료 버튼 핸들러"""

@@ -7,6 +7,7 @@
 import sys
 import os
 import random
+import argparse
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -17,10 +18,54 @@ from database import DatabaseManager
 from models import Customer, Policy
 
 
-def create_dummy_data():
-    """30명 더미 고객 + 보험 계약 생성"""
+def _generate_extra_customers(start_index: int, count: int):
+    """Generate additional random customer rows for load testing."""
+    first_names = [
+        "민준", "서연", "지훈", "수빈", "예린", "도윤", "하은", "지안", "현우", "유진",
+        "태윤", "지수", "서준", "가은", "시우", "나은", "주원", "채원", "윤서", "다은",
+    ]
+    last_names = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임"]
+    occupations = ["회사원", "자영업", "공무원", "교사", "간호사", "프리랜서", "기술직", "영업직"]
+    addresses = [
+        "서울시 강남구", "서울시 마포구", "서울시 송파구", "경기도 성남시",
+        "경기도 수원시", "인천시 남동구", "대전시 유성구", "부산시 해운대구",
+    ]
+    payment_methods = ["계좌이체", "신용카드", "자동이체"]
+    driving_types = ["none", "personal", "commercial"]
 
-    db_path = Path(__file__).parent.parent / "data" / "crm_dummy.db"
+    rows = []
+    for idx in range(count):
+        serial = start_index + idx + 1
+        name = random.choice(last_names) + random.choice(first_names)
+        phone = f"010-{random.randint(1000, 9999)}-{serial:04d}"
+        yy = random.randint(70, 99)
+        mm = random.randint(1, 12)
+        dd = random.randint(1, 28)
+        gender = random.choice([1, 2, 3, 4])
+        resident_id = f"{yy:02d}{mm:02d}{dd:02d}-{gender}{random.randint(0, 999999):06d}"
+
+        rows.append(
+            dict(
+                name=name,
+                phone=phone,
+                resident_id=resident_id,
+                address=random.choice(addresses),
+                occupation=random.choice(occupations),
+                driving_type=random.choice(driving_types),
+                payment_method=random.choices(payment_methods, weights=[50, 30, 20], k=1)[0],
+                med_medication=random.choice([None, "고혈압약", "당뇨약"]) if random.random() < 0.2 else None,
+                med_recent_exam=True if random.random() < 0.15 else False,
+                med_5yr_diagnosis=random.choice([None, "암", "뇌졸중"]) if random.random() < 0.1 else None,
+                memo=f"LOAD TEST #{serial}",
+            )
+        )
+    return rows
+
+
+def create_dummy_data(customers_target: int = 30, db_filename: str = "crm_dummy.db"):
+    """Dummy customers + policies for manual QA."""
+
+    db_path = Path(__file__).parent.parent / "data" / db_filename
     if db_path.exists():
         try:
             os.remove(db_path)
@@ -34,7 +79,7 @@ def create_dummy_data():
     today_mmdd = today.strftime("%m%d")
 
     # =========================================================================
-    # 고객 데이터 30명
+    # 고객 데이터
     # =========================================================================
     customers_data = [
         # --- 1~5: 생일 오늘 (아이콘 테스트) ---
@@ -271,10 +316,16 @@ def create_dummy_data():
         ),
     ]
 
+    if customers_target > len(customers_data):
+        extra = _generate_extra_customers(len(customers_data), customers_target - len(customers_data))
+        customers_data.extend(extra)
+    elif customers_target < len(customers_data):
+        customers_data = customers_data[:customers_target]
+
     # =========================================================================
     # 고객 생성
     # =========================================================================
-    print("\n[Creating 30 Customers]")
+    print(f"\n[Creating {len(customers_data)} Customers]")
     print("=" * 60)
 
     customer_ids = []
@@ -382,8 +433,8 @@ def create_dummy_data():
                 next_pay = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
                 status = "active"
             else:
-                # 추가: 미래 날짜
-                offset = random.randint(5, 50)
+                # 대량 데이터에서도 탭 분포가 나오도록 혼합
+                offset = random.choice([-20, -10, -5, -2, -1, 0, 1, 2, 3, 5, 7, 10, 20, 35, 50])
                 next_pay = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
                 status = "active"
 
@@ -472,13 +523,19 @@ def create_dummy_data():
     db.close()
 
     print(f"\n{'=' * 60}")
-    print(f"[SUCCESS] 30 customers + {policy_count} policies created!")
+    print(f"[SUCCESS] {len(all_customers)} customers + {policy_count} policies created!")
     print(f"Database: {db_path}")
     print(f"\nRun app with dummy data:")
-    print(f"  python scripts/run_with_dummy.py")
+    print(f"  python scripts/run_with_dummy.py --db {db_filename}")
     print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
-    random.seed(42)  # 재현 가능한 결과
-    create_dummy_data()
+    parser = argparse.ArgumentParser(description="Create dummy CRM data")
+    parser.add_argument("--customers", type=int, default=30, help="Number of customers to create (default: 30)")
+    parser.add_argument("--db", type=str, default="crm_dummy.db", help="Output DB filename under data/")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    args = parser.parse_args()
+
+    random.seed(args.seed)
+    create_dummy_data(customers_target=args.customers, db_filename=args.db)

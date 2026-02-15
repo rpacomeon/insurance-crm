@@ -1,121 +1,25 @@
-# Project Dashboard: insurance-crm
+﻿# Project Dashboard: insurance-crm
 
-> **Status**: 🟢 Active
-> **Phase**: 6-2 완료 → 7 대기
-> **Progress**: ██████████ 100% (Phase 6-2까지)
-> **Last Updated**: 2026-02-14
-> **Tests**: 64 passed / 0 failed
+> **Status**: Active
+> **Phase**: 6-2 완료 -> 7 대기
+> **Principle**: 정확성/단순성/경량 우선
+> **Last Updated**: 2026-02-15
 
----
+## Current Focus
+- [x] 고객 CRUD + 검색 + 백업/복원
+- [x] 보험 계약 CRUD + 납부일 자동 계산
+- [x] 카드 필드 `card_number` 표준화
+- [ ] PyInstaller exe 빌드 안정화
+- [ ] 배포 문서 최종 점검
 
-## 📌 Current Focus
+## Health
+- 정책 테스트: `tests/test_policy.py` 통과
+- 주요 리스크: 빌드/배포 환경 차이(Phase 7)
 
-현재 상태:
-- [x] Phase 1~4: 기본 CRUD + 백업/복원
-- [x] Phase 5: UI/UX 확장 (좌측 테이블 + 우측 상세, 테마, CSV 내보내기)
-- [x] Phase 6-1: 보험 계약 관리 MVP (Policy CRUD + 날짜 자동계산)
-- [x] Phase 6-2: 카드 16자리 저장 + 자동 납부 체크 + 인디케이터
-- [ ] Phase 7: PyInstaller exe 빌드 + 성능 최적화
+## Next (Phase 7)
+1. `scripts/build_exe.bat`로 exe 빌드
+2. Windows 10/11 실행 확인
+3. README/가이드 배포 검수
 
----
-
-## 📂 Project Structure (최신)
-
-```
-insurance-crm/
-├── CLAUDE.md              ← 프로젝트 규칙
-├── dashboard.md           ← 이 파일 (상태 대시보드)
-├── README.md              ← 프로젝트 개요
-│
-├── docs/
-│   ├── design_doc.md      ← 기술 명세서 (v2.0 - Customer + Policy)
-│   ├── task.md            ← Phase별 태스크 체크리스트
-│   ├── decision_log.md    ← 의사결정 기록
-│   └── anti_patterns.md   ← 프로젝트별 실패 패턴
-│
-├── src/                   ← 소스 코드
-│   ├── main.py            ← 엔트리포인트 (개발/PyInstaller 대응)
-│   ├── models.py          ← Customer(22필드) + Policy(19필드)
-│   ├── database.py        ← DatabaseManager (명시적 컬럼 SELECT)
-│   ├── gui/
-│   │   ├── main_window.py ← 메인 윈도우 (테이블+상세+인디케이터)
-│   │   ├── customer_form.py ← 고객 추가/편집 폼 (확장 필드)
-│   │   ├── policy_form.py ← 보험 계약 추가/편집 폼
-│   │   └── theme.py       ← 색상/폰트/레이아웃 상수
-│   └── utils/
-│       ├── validators.py  ← 입력 검증 함수
-│       ├── file_helpers.py ← 백업/복원
-│       └── export_helpers.py ← CSV 내보내기
-│
-├── tests/                 ← 테스트 (64개 전체 통과)
-│   ├── test_database.py   ← DB CRUD + 마이그레이션 테스트
-│   ├── test_models.py     ← Customer/Policy 모델 테스트
-│   ├── test_policy.py     ← Policy CRUD + 날짜 + 연체 + CASCADE
-│   └── test_validators.py ← 입력 검증 테스트
-│
-├── scripts/
-│   ├── setup_env.bat      ← 환경 구성
-│   ├── run_app.bat        ← 앱 실행
-│   ├── build_exe.bat      ← PyInstaller 빌드
-│   ├── create_dummy_data.py ← 더미 30명 + 43계약 생성
-│   └── run_with_dummy.py  ← 더미 DB로 앱 실행
-│
-├── config/settings.json
-└── data/
-    ├── crm.db             ← 운영 DB
-    └── crm_dummy.db       ← 더미 테스트 DB
-```
-
----
-
-## 📊 Phase Progress
-
-| Phase | 이름 | 상태 | 테스트 |
-|-------|------|------|--------|
-| 1 | 기반 구축 (DB 계층) | ✅ 완료 | 24 pass |
-| 2 | GUI 기본 틀 (검색) | ✅ 완료 | - |
-| 3 | 고객 추가/편집 (CRUD) | ✅ 완료 | - |
-| 4 | 삭제 및 백업/복원 | ✅ 완료 | - |
-| 5 | UI/UX 확장 (테마/CSV/레이아웃) | ✅ 완료 | - |
-| 6-1 | 보험 계약 관리 MVP | ✅ 완료 | 63 pass |
-| 6-2 | 카드 16자리 + 자동 납부 체크 | ✅ 완료 | 64 pass |
-| 7 | exe 빌드 + 성능 최적화 | ⚪ 대기 | - |
-| 8 | 검색 디바운스 + UI 성능 | ⚪ 대기 | - |
-| 9 | 클라우드 백업 (Supabase) | ⚪ 백로그 | - |
-
----
-
-## 🚨 Known Issues
-
-| # | 이슈 | 심각도 | 상태 |
-|---|------|--------|------|
-| 1 | 검색 디바운스 없음 (키입력마다 쿼리) | Medium | Phase 8에서 해결 |
-| 2 | 상세 패널 위젯 매번 파괴/재생성 | Low | Phase 8에서 해결 |
-| 3 | 운영 DB에 2건 데이터 손상 (권건우/한민수) | Low | 수동 재입력 필요 |
-
----
-
-## ✅ Recent Completions
-
-| 날짜 | 항목 |
-|------|------|
-| 2026-02-14 | Phase 6-2: 카드결제만 납부/연체 알림 (계좌이체 제외) |
-| 2026-02-14 | Phase 6-2: SELECT * → 명시적 컬럼 SELECT 전환 (컬럼 순서 버그 해결) |
-| 2026-02-14 | Phase 6-2: 인디케이터 아이콘 수정 (set 덮어쓰기 버그) |
-| 2026-02-14 | Phase 6-2: 카드 번호 4자리→16자리, 자동 납부 상태 갱신 |
-| 2026-02-14 | Phase 6-1: Policy CRUD + 날짜 자동계산 + CASCADE 삭제 |
-
----
-
-## 🎯 Milestones
-
-| # | 마일스톤 | 날짜 | 상태 |
-|---|----------|------|------|
-| 1 | Phase 1 완료 (DB 계층) | 2026-02-14 | ✅ |
-| 2 | Phase 2-4 완료 (GUI CRUD) | 2026-02-14 | ✅ |
-| 3 | Phase 5-6 완료 (확장 기능) | 2026-02-14 | ✅ |
-| 4 | Phase 7 완료 (exe 배포) | TBD | ⚪ |
-
----
-
-*Dashboard는 Single Source of Truth입니다.*
+## Source of Truth
+- 상태 변경은 이 파일을 먼저 업데이트

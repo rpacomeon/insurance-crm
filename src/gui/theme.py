@@ -95,6 +95,6 @@ SIZES = {
 APP_INFO = {
     "title": "\ud53c\ud50c\ub77c\uc774\ud504 \ub300\uc804\ud589\ubcf5\uc0ac\uc5c5\ub2e8 - \uace0\uac1d\uad00\ub9ac",
     "short_title": "\uace0\uac1d\uad00\ub9ac \uc2dc\uc2a4\ud15c",
-    "version": "1.0.0",
+    "version": "4.0.0",
     "company": "\ud53c\ud50c\ub77c\uc774\ud504 \ub300\uc804\ud589\ubcf5\uc0ac\uc5c5\ub2e8",
 }
