@@ -69,10 +69,22 @@ class PolicyForm:
         self.card_issuer_var = tk.StringVar()
         self.card_number_var = tk.StringVar()
         self.card_expiry_var = tk.StringVar()
+        self.card_number_part1_var = tk.StringVar()
+        self.card_number_part2_var = tk.StringVar()
+        self.card_number_part3_var = tk.StringVar()
+        self.card_number_part4_var = tk.StringVar()
+        self.card_expiry_mm_var = tk.StringVar()
+        self.card_expiry_yy_var = tk.StringVar()
 
         # 계약 기간
         self.contract_start_date_var = tk.StringVar()
         self.contract_end_date_var = tk.StringVar()
+        self.contract_start_year_var = tk.StringVar()
+        self.contract_start_month_var = tk.StringVar()
+        self.contract_start_day_var = tk.StringVar()
+        self.contract_end_year_var = tk.StringVar()
+        self.contract_end_month_var = tk.StringVar()
+        self.contract_end_day_var = tk.StringVar()
 
         # 메모
         self.memo_var = tk.StringVar()
@@ -100,13 +112,33 @@ class PolicyForm:
         if self.policy.card_issuer:
             self.card_issuer_var.set(self.policy.card_issuer)
         if self.policy.card_number:
+            self._set_segmented_field_values(self.policy.card_number, 4, [
+                self.card_number_part1_var,
+                self.card_number_part2_var,
+                self.card_number_part3_var,
+                self.card_number_part4_var,
+            ])
             self.card_number_var.set(self.policy.card_number)
         if self.policy.card_expiry:
+            self._set_segmented_field_values(self.policy.card_expiry, 2, [
+                self.card_expiry_mm_var,
+                self.card_expiry_yy_var,
+            ])
             self.card_expiry_var.set(self.policy.card_expiry)
 
         # 계약 기간
+        self._set_segmented_date_values(self.policy.contract_start_date, [
+            self.contract_start_year_var,
+            self.contract_start_month_var,
+            self.contract_start_day_var,
+        ], 4, 2, 2)
         self.contract_start_date_var.set(self.policy.contract_start_date)
         if self.policy.contract_end_date:
+            self._set_segmented_date_values(self.policy.contract_end_date, [
+                self.contract_end_year_var,
+                self.contract_end_month_var,
+                self.contract_end_day_var,
+            ], 4, 2, 2)
             self.contract_end_date_var.set(self.policy.contract_end_date)
 
         # 메모
@@ -314,13 +346,29 @@ class PolicyForm:
         )
 
         # 카드 번호 16자리
-        self.card_number_entry = self._create_input_row(
-            self.card_section_frame, "카드 번호 (16자리)", self.card_number_var, "예: 1234-5678-9012-3456", return_entry=True, width=25
+        self.card_number_entries = self._create_segmented_input_row(
+            self.card_section_frame,
+            "카드 번호 (16자리)",
+            [
+                (self.card_number_part1_var, 4),
+                (self.card_number_part2_var, 4),
+                (self.card_number_part3_var, 4),
+                (self.card_number_part4_var, 4),
+            ],
+            [" ", " ", " "],
+            "예: 1234 5678 9012 3456",
         )
 
         # 유효기간 (MM/YY)
-        self.card_expiry_entry = self._create_input_row(
-            self.card_section_frame, "유효기간 (MM/YY)", self.card_expiry_var, "예: 12/26", return_entry=True
+        self.card_expiry_entries = self._create_segmented_input_row(
+            self.card_section_frame,
+            "유효기간 (MM/YY)",
+            [
+                (self.card_expiry_mm_var, 2),
+                (self.card_expiry_yy_var, 2),
+            ],
+            [" "],
+            "예: 12 26",
         )
 
     def _create_contract_period_section(self, parent):
@@ -339,10 +387,30 @@ class PolicyForm:
         title_label.pack(anchor="w", pady=(0, SPACING["padding_medium"]))
 
         # 시작일
-        self._create_input_row(section_frame, "시작일 *", self.contract_start_date_var, "예: 2026-01-01")
+        self.contract_start_date_entries = self._create_segmented_input_row(
+            section_frame,
+            "시작일 *",
+            [
+                (self.contract_start_year_var, 4),
+                (self.contract_start_month_var, 2),
+                (self.contract_start_day_var, 2),
+            ],
+            [" ", " "],
+            "예: 2026 02 15",
+        )
 
         # 종료일 (선택)
-        self._create_input_row(section_frame, "종료일 (선택)", self.contract_end_date_var, "예: 2027-01-01")
+        self.contract_end_date_entries = self._create_segmented_input_row(
+            section_frame,
+            "종료일 (선택)",
+            [
+                (self.contract_end_year_var, 4),
+                (self.contract_end_month_var, 2),
+                (self.contract_end_day_var, 2),
+            ],
+            [" ", " "],
+            "예: 2027 02 15",
+        )
 
     def _create_memo_section(self, parent):
         """섹션 5: 메모"""
@@ -405,6 +473,168 @@ class PolicyForm:
         if return_entry:
             return entry
 
+    def _create_segmented_input_row(
+        self,
+        parent,
+        label_text,
+        segments,
+        separators,
+        placeholder="",
+    ):
+        row_frame = tk.Frame(parent, bg=COLORS["bg_main"])
+        row_frame.pack(fill="x", pady=SPACING["padding_small"])
+
+        label = tk.Label(
+            row_frame,
+            text=label_text,
+            font=FONTS["form_label"],
+            bg=COLORS["bg_main"],
+            width=15,
+            anchor="w",
+        )
+        label.pack(side="left")
+
+        entries = []
+        max_lengths = []
+        for seg_var, seg_len in segments:
+            max_lengths.append(seg_len)
+            entry = tk.Entry(
+                row_frame,
+                textvariable=seg_var,
+                font=FONTS["form_input"],
+                width=seg_len + 1,
+                justify="center",
+            )
+            entry.pack(side="left")
+            entries.append(entry)
+        for idx, sep in enumerate(separators):
+            if sep and idx < len(entries):
+                sep_label = tk.Label(
+                    row_frame,
+                    text=sep,
+                    font=FONTS["form_input"],
+                    bg=COLORS["bg_main"],
+                    fg=COLORS["text_hint"],
+                )
+                sep_label.pack(side="left", padx=2)
+
+        for idx, entry in enumerate(entries):
+            prev_entry = entries[idx - 1] if idx > 0 else None
+            next_entry = entries[idx + 1] if idx + 1 < len(entries) else None
+            entry.bind(
+                "<KeyRelease>",
+                lambda e, ent=entry, m=max_lengths[idx], prev=prev_entry, nxt=next_entry: self._on_segment_key_release(
+                    e, ent, m, prev, nxt
+                ),
+            )
+
+        if placeholder:
+            hint = tk.Label(
+                row_frame,
+                text=placeholder,
+                font=FONTS["small"],
+                bg=COLORS["bg_main"],
+                fg=COLORS["text_hint"],
+            )
+            hint.pack(side="left", padx=SPACING["padding_small"])
+
+        return entries
+
+    def _on_segment_key_release(self, event, entry, max_length, prev_entry, next_entry):
+        digits = "".join(ch for ch in entry.get() if ch.isdigit())
+        if digits != entry.get():
+            entry.delete(0, "end")
+            entry.insert(0, digits)
+        if len(digits) > max_length:
+            entry.delete(max_length, tk.END)
+            digits = entry.get()
+
+        nav_keys = {
+            "Left",
+            "Right",
+            "Up",
+            "Down",
+            "Tab",
+            "Shift_L",
+            "Shift_R",
+            "Control_L",
+            "Control_R",
+            "Alt_L",
+            "Alt_R",
+            "Home",
+            "End",
+            "Prior",
+            "Next",
+            "Delete",
+        }
+        if event.keysym == "BackSpace" and prev_entry is not None and not digits:
+            prev_entry.focus_set()
+            prev_entry.icursor(tk.END)
+            return
+        if len(digits) == max_length and next_entry is not None and event.keysym not in nav_keys:
+            next_entry.focus_set()
+            next_entry.icursor(0)
+
+    def _set_segmented_field_values(self, raw_value, segment_length, vars_list):
+        value = "".join(ch for ch in (raw_value or "") if ch.isdigit())
+        for index, var in enumerate(vars_list):
+            start = index * segment_length
+            var.set(value[start : start + segment_length])
+
+    def _set_segmented_date_values(self, raw_value, vars_list, year_len, month_len, day_len):
+        if not raw_value:
+            vars_list[0].set("")
+            vars_list[1].set("")
+            vars_list[2].set("")
+            return
+
+        if "-" in raw_value:
+            parts = raw_value.split("-")
+            if len(parts) == 3:
+                vars_list[0].set(parts[0])
+                vars_list[1].set(parts[1])
+                vars_list[2].set(parts[2])
+                return
+
+        digits = "".join(ch for ch in raw_value if ch.isdigit())
+        vars_list[0].set(digits[:year_len])
+        vars_list[1].set(digits[year_len : year_len + month_len])
+        vars_list[2].set(digits[year_len + month_len : year_len + month_len + day_len])
+
+    def _sync_segmented_fields(self):
+        self.card_number_var.set(
+            f"{self.card_number_part1_var.get().strip()}"
+            f"{self.card_number_part2_var.get().strip()}"
+            f"{self.card_number_part3_var.get().strip()}"
+            f"{self.card_number_part4_var.get().strip()}"
+        )
+        card_expiry_mm = self.card_expiry_mm_var.get().strip()
+        card_expiry_yy = self.card_expiry_yy_var.get().strip()
+        if card_expiry_mm or card_expiry_yy:
+            self.card_expiry_var.set(f"{card_expiry_mm}/{card_expiry_yy}")
+        else:
+            self.card_expiry_var.set("")
+
+        start_date_fields = (
+            self.contract_start_year_var.get().strip(),
+            self.contract_start_month_var.get().strip(),
+            self.contract_start_day_var.get().strip(),
+        )
+        if any(start_date_fields):
+            self.contract_start_date_var.set(f"{start_date_fields[0]}-{start_date_fields[1]}-{start_date_fields[2]}")
+        else:
+            self.contract_start_date_var.set("")
+
+        end_date_fields = (
+            self.contract_end_year_var.get().strip(),
+            self.contract_end_month_var.get().strip(),
+            self.contract_end_day_var.get().strip(),
+        )
+        if any(end_date_fields):
+            self.contract_end_date_var.set(f"{end_date_fields[0]}-{end_date_fields[1]}-{end_date_fields[2]}")
+        else:
+            self.contract_end_date_var.set("")
+
     def _create_buttons(self, parent):
         """하단 버튼 생성"""
         button_frame = tk.Frame(parent, bg=COLORS["bg_main"])
@@ -450,10 +680,12 @@ class PolicyForm:
         # Entry 위젯 상태 변경
         if hasattr(self, 'card_issuer_entry'):
             self.card_issuer_entry.config(state=state)
-        if hasattr(self, 'card_number_entry'):
-            self.card_number_entry.config(state=state)
-        if hasattr(self, 'card_expiry_entry'):
-            self.card_expiry_entry.config(state=state)
+        if hasattr(self, 'card_number_entries'):
+            for entry in self.card_number_entries:
+                entry.config(state=state)
+        if hasattr(self, 'card_expiry_entries'):
+            for entry in self.card_expiry_entries:
+                entry.config(state=state)
 
     def _on_save_click(self):
         """저장 버튼 클릭 핸들러"""
@@ -483,6 +715,8 @@ class PolicyForm:
             messagebox.showerror("입력 오류", error_msg)
             return
         billing_day = int(self.billing_day_var.get())
+
+        self._sync_segmented_fields()
 
         # 계약 기간
         is_valid, error_msg = validate_contract_dates(
