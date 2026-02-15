@@ -20,6 +20,57 @@ from utils.file_helpers import backup_database, restore_database
 from utils.export_helpers import export_to_csv
 from utils.message_simulator import simulate_sms_send, send_sms, build_sms_template_message, build_review_text
 
+QUICK_QA_GUIDE_TEXT = r"""
+CUSTOMER IMPORT - 10 MIN QUICK QA
+=================================
+
+[Goal]
+- Existing customer must stay unchanged.
+- New customer must be added.
+- Errors must be identifiable by row/column/code.
+
+[Step 1] Open import
+1) Click "Excel Import" button.
+2) Click "Template Save" and save template file.
+
+[Step 2] Success case (new rows only)
+1) Fill 2 new customers in customers sheet.
+2) Click Preview.
+3) Expected: success > 0, skip = 0, fail = 0.
+4) Click Commit.
+5) Search by phone and confirm both are added.
+
+[Step 3] Existing key protection
+1) Pick one existing customer (name + phone).
+2) Put same key in Excel with changed memo/address.
+3) Preview + Commit.
+4) Expected: skip with E202.
+5) Open customer detail and confirm old data is unchanged.
+
+[Step 4] Error visibility
+1) Add one row with empty name and one row with wrong phone (abc).
+2) Click Preview.
+3) Expected: fail rows with E101 / E103.
+4) Click Error Report and open CSV.
+5) Confirm columns: sheet,row,column,error_code,message,action_hint.
+
+[ASCII FLOW]
++----------------+     +--------------------+     +----------------------+
+| Select .xlsx   | --> | Preview Validation | --> | Commit (partial pass)|
++----------------+     +--------------------+     +----------------------+
+                                |                            |
+                                v                            v
+                       +------------------+         +----------------------+
+                       | Error/Skip list  |         | New insert only      |
+                       | (row,col,code)   |         | Existing key = skip  |
+                       +------------------+         +----------------------+
+
+[Safety Rule]
+- Key = phone + name
+- Existing key => KEEP EXISTING (never overwrite)
+- New key => INSERT
+"""
+
 
 def show_toast(parent, message, duration=1500):
     """자동 사라지는 토스트 메시지
@@ -232,6 +283,27 @@ class MainWindow:
         btn_add.pack(
             side=tk.RIGHT,
             padx=SPACING["padding_large"],
+            pady=SPACING["padding_large"],
+        )
+
+        btn_help = tk.Button(
+            header,
+            text="?",
+            font=FONTS["button"],
+            bg=COLORS["primary_dark"],
+            fg=COLORS["text_on_primary"],
+            activebackground=COLORS["primary"],
+            activeforeground=COLORS["text_on_primary"],
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=SPACING["button_pady"],
+            cursor="hand2",
+            command=self._on_open_quick_guide,
+        )
+        btn_help.pack(
+            side=tk.RIGHT,
+            padx=(0, SPACING["padding_large"]),
             pady=SPACING["padding_large"],
         )
 
@@ -1278,6 +1350,37 @@ class MainWindow:
             db_manager=self.db,
             on_completed=self.load_customers,
         )
+
+    def _on_open_quick_guide(self):
+        """Open in-app notepad style quick QA guide."""
+        guide = tk.Toplevel(self.root)
+        guide.title("Quick QA Guide")
+        guide.geometry("860x700")
+        guide.transient(self.root)
+
+        container = tk.Frame(guide, bg=COLORS["bg_white"])
+        container.pack(fill=tk.BOTH, expand=True)
+
+        text = tk.Text(
+            container,
+            wrap=tk.NONE,
+            font=("Consolas", 11),
+            bg=COLORS["bg_white"],
+            fg=COLORS["text_primary"],
+            relief="flat",
+            padx=12,
+            pady=12,
+        )
+        y_scroll = ttk.Scrollbar(container, orient=tk.VERTICAL, command=text.yview)
+        x_scroll = ttk.Scrollbar(container, orient=tk.HORIZONTAL, command=text.xview)
+        text.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        y_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        x_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+
+        text.insert("1.0", QUICK_QA_GUIDE_TEXT.strip())
+        text.configure(state=tk.DISABLED)
 
     def _on_double_click(self, event):
         """테이블 더블클릭 이벤트 (수정 기능 호출)"""
