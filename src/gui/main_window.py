@@ -14,6 +14,7 @@ from datetime import datetime
 from database import DatabaseManager
 from models import Customer
 from gui.customer_form import CustomerForm
+from gui.import_customers_dialog import ImportCustomersDialog
 from gui.theme import COLORS, FONTS, SPACING, SIZES, APP_INFO
 from utils.file_helpers import backup_database, restore_database
 from utils.export_helpers import export_to_csv
@@ -697,6 +698,7 @@ class MainWindow:
         self._create_button(left_group, "Backup", COLORS["btn_backup"], self._on_backup)
         self._create_button(left_group, "Restore", COLORS["btn_restore"], self._on_restore)
         self._create_button(left_group, "CSV Download", COLORS["btn_refresh"], self._on_csv_download)
+        self._create_button(left_group, "Excel Import", COLORS["info"], self._on_excel_import)
         self._create_button(left_group, "Refresh", COLORS["btn_refresh"], self.load_customers)
 
         # 우측: 종료 버튼
@@ -1268,6 +1270,14 @@ class MainWindow:
                 messagebox.showerror("다운로드 실패", error)
         except Exception as e:
             messagebox.showerror("오류", f"CSV 다운로드 중 오류 발생:\n{e}")
+
+    def _on_excel_import(self):
+        """Excel customer bulk import dialog."""
+        ImportCustomersDialog(
+            self.root,
+            db_manager=self.db,
+            on_completed=self.load_customers,
+        )
 
     def _on_double_click(self, event):
         """테이블 더블클릭 이벤트 (수정 기능 호출)"""
